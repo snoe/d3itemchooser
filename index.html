@@ -1,0 +1,179 @@
+<html>
+    <head>
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script>
+        <script src="ICanHaz.min.js"></script>
+        <script src="chars.js"></script>
+
+        <script id="equipRow" type="text/html">
+            <tr>
+                <td>{{attr}}:</td>
+                <td><input id="char_{{attr}}" value="{{base}}"></td>
+                <td><input id="{{attr}}"></td>
+                <td><input id="new_{{attr}}"></td>
+                <td><input id="chg_{{attr}}"></td>
+            </tr>
+        </script>
+        <script>
+            var stats = {};
+            var init_view = function() {
+                Object.keys(stats).forEach(function(attr) {
+                    $('#equip').append(ich.equipRow({attr:attr, base: stats[attr]}));
+                }, this);
+            }
+
+            var on_save = function() {
+                Object.keys(stats).forEach(function(attr) {
+                    stats[attr] = parseFloat($('#char_' + attr).val());
+                }, this);
+                set_base_stats(stats);
+                localStorage.setItem('mychar', JSON.stringify(stats));
+            }
+
+            var avg_dmg = function(stats) {
+                var main_min = stats['main_min'] + stats['dmg_bonus_min'];
+                var main_max = stats['main_max'] + stats['dmg_bonus_max'];
+                var main_avg = (main_min + main_max) / 2;
+                if (is_dual(stats)) {
+                    var off_min = stats['off_min'] + stats['dmg_bonus_min'];
+                    var off_max = stats['off_max'] + stats['dmg_bonus_max'];
+                    var off_avg = (off_min + off_max) / 2;
+                    return  (main_avg + off_avg) / 2; 
+                } else {
+                    return main_avg;
+                }
+            }
+
+            var avg_aps = function(stats) {
+                var main = stats['main_aps'];
+                if (is_dual(stats)) {
+                    var off = stats['off_aps'];
+                    return (main + off) / 2; 
+                } else {
+                    return main;
+                }
+            }
+
+            var is_dual = function(stats) {
+                return stats['off_max'] > 0;
+            }
+
+            var attack_rate = function(stats) { 
+                var rate = avg_aps(stats) * stats['base_aps']; 
+                if (is_dual(stats)) {
+                    rate = avg_aps(stats) * (stats['base_aps'] + 0.15);  
+                }
+                return rate;
+            }
+
+            var calc_dmg = function(selector, stats) {
+                var S = (stats['str']/100) + 1;
+                var C = stats['crit_chance'] * stats['crit_bonus'] + 1;
+                var R = attack_rate(stats); 
+                var A = avg_dmg(stats);
+                var M = 1;
+                var dmg = S*C*R*A*M;
+                $(selector).html(dmg);
+                $('#chg_dmg').html($('#new_dmg').html() - $('#dmg').html());
+            }
+
+            var calc_reduction = function(selector, stats) {
+                var res = stats['base_res'] + stats['int'] * 0.10;
+                var armor = stats['base_armor'] + stats['str'];
+                var phys = armor / (50 * 60 + armor);
+                var elem = res / (5 * 60 + res);
+                var reduction = 1 - ((1-phys) * (1-elem));
+
+                $(selector).html(reduction);
+            }
+
+            var calc_ehp = function() {
+                var ehp = $('#health').html() / (1 - $('#reduction').html());
+                var new_ehp = $('#new_health').html() / (1 - $('#new_reduction').html());
+
+                $('#ehp').html(ehp);
+                $('#new_ehp').html(new_ehp);
+                $('#chg_ehp').html(new_ehp - ehp);
+            }
+
+            var calc_health = function(selector, stats) {
+                var base_life = 36 + 4 * 60 + (60-25) * stats['vit'];
+                var max_life = (1 + stats['life']/100) * base_life;
+                $(selector).html(max_life);
+            }
+
+            var set_base_stats = function(stats) { 
+                stats['base_armor'] = stats['armor'] - stats['str'];
+                stats['base_res'] = stats['res'] - stats['int'] * 0.1;
+                stats['base_aps'] = stats['aps'] / avg_aps(stats);
+                if (is_dual(stats)) {
+                    stats['base_aps'] -= 0.15;
+                }
+            }
+
+            var on_equip_change = function() {
+                var new_stats = $.extend({}, stats);
+                Object.keys(new_stats).forEach(function(attr) {
+                    var change = ($('#new_' + attr).val() - $('#' + attr).val())
+                    $('#chg_' + attr).val(change);
+                    new_stats[attr] += change 
+                }, this);
+                set_base_stats(new_stats);
+                calc_health('#new_health', new_stats);
+                calc_dmg('#new_dmg', new_stats);
+                calc_reduction('#new_reduction', new_stats);
+                calc_ehp();
+            }
+
+            $(document).ready(function() {
+                if (localStorage.getItem('mychar')) {
+                    stats = JSON.parse(localStorage.getItem('mychar'));
+                } else {
+                    stats = TemplateCharacter
+                } 
+                set_base_stats(stats);
+
+                init_view();
+
+                calc_health("#health", stats);
+                calc_dmg("#dmg", stats);
+                calc_reduction('#reduction', stats);
+                on_equip_change(); 
+                $("#equip").delegate("input", "change", on_equip_change);
+                $("#save").click(on_save);
+                on_save();
+            });
+        </script>
+    </head>
+    <body>
+        <table id="equip">
+            <tr>
+                <td>Maximum life:</td>
+                <td id="health"></td>
+                <td id="new_health"></td>
+                <td id="chg_health"></td>
+            </tr>
+            <tr>
+                <td>Reduction:</td>
+                <td id="reduction"></td>
+                <td id="new_reduction"></td>
+                <td id="chg_reduction"></td>
+            </tr>
+            <tr>
+                <td>EHP:</td>
+                <td id="ehp"></td>
+                <td id="new_ehp"></td>
+                <td id="chg_ehp"></td>
+            </tr>
+            <tr>
+                <td>Damage:</td>
+                <td id="dmg"></td>
+                <td id="new_dmg"></td>
+                <td id="chg_dmg"></td>
+            </tr>
+        </table>
+        <button id="save">Save</button>
+        <button id="update">Update</button>
+        <button id="reset">Reset</button><br>
+
+    </body>
+</html>

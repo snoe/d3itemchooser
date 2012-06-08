@@ -11,6 +11,7 @@
                 <td><input id="{{attr}}"></td>
                 <td><input id="new_{{attr}}"></td>
                 <td><input id="chg_{{attr}}"></td>
+                <td><input id="up_{{attr}}"></td>
             </tr>
         </script>
         <script>
@@ -21,57 +22,46 @@
                 }, this);
             }
 
-            var on_save = function() {
+            var save = function() {
+                localStorage.setItem('mychar', JSON.stringify(stats));
+            }
+
+            var on_update = function() {
                 Object.keys(stats).forEach(function(attr) {
-                    stats[attr] = parseFloat($('#char_' + attr).val());
+                    stats[attr] = parseFloat($('#up_' + attr).val());
+                    $('#char_' + attr).val(stats[attr]);
                 }, this);
                 set_base_stats(stats);
                 localStorage.setItem('mychar', JSON.stringify(stats));
             }
 
-            var avg_dmg = function(stats) {
+            var avg_dmg = function(hand, stats) {
                 var main_min = stats['main_min'] + stats['dmg_bonus_min'];
                 var main_max = stats['main_max'] + stats['dmg_bonus_max'];
-                var main_avg = (main_min + main_max) / 2;
-                if (is_dual(stats)) {
-                    var off_min = stats['off_min'] + stats['dmg_bonus_min'];
-                    var off_max = stats['off_max'] + stats['dmg_bonus_max'];
-                    var off_avg = (off_min + off_max) / 2;
-                    return  (main_avg + off_avg) / 2; 
-                } else {
-                    return main_avg;
-                }
-            }
-
-            var avg_aps = function(stats) {
-                var main = stats['main_aps'];
-                if (is_dual(stats)) {
-                    var off = stats['off_aps'];
-                    return (main + off) / 2; 
-                } else {
-                    return main;
-                }
+                return (main_min + main_max) / 2;
             }
 
             var is_dual = function(stats) {
                 return stats['off_max'] > 0;
             }
 
-            var attack_rate = function(stats) { 
-                var rate = avg_aps(stats) * stats['base_aps']; 
-                if (is_dual(stats)) {
-                    rate = avg_aps(stats) * (stats['base_aps'] + 0.15);  
-                }
-                return rate;
+            var calc_dmg_one_hand = function(hand, stats) {
+                var S = (stats['str']/100) + 1;
+                var C = stats['crit_chance'] * stats['crit_bonus'] + 1;
+                var R = stats[hand + '_aps'];
+                var A = avg_dmg(hand, stats);
+                var M = 1;
+                return S*C*R*A*M;
             }
 
             var calc_dmg = function(selector, stats) {
-                var S = (stats['str']/100) + 1;
-                var C = stats['crit_chance'] * stats['crit_bonus'] + 1;
-                var R = attack_rate(stats); 
-                var A = avg_dmg(stats);
-                var M = 1;
-                var dmg = S*C*R*A*M;
+                var dmg = calc_dmg_one_hand("main", stats);
+                if (is_dual(stats)) {
+                    dmg += calc_dmg_one_hand("off", stats);
+                    dmg = dmg / 2;
+                    dmg = dmg * 1.15;
+                }
+
                 $(selector).html(dmg);
                 $('#chg_dmg').html($('#new_dmg').html() - $('#dmg').html());
             }
@@ -101,6 +91,17 @@
                 $(selector).html(max_life);
             }
 
+            var avg_aps = function(stats) {
+                var main = stats['main_aps'];
+                if (is_dual(stats)) {
+                    var off = stats['off_aps'];
+                    return (main + off) / 2; 
+                } else {
+                    return main;
+                }
+                return (main_min + main_max) / 2;
+            }
+
             var set_base_stats = function(stats) { 
                 stats['base_armor'] = stats['armor'] - stats['str'];
                 stats['base_res'] = stats['res'] - stats['int'] * 0.1;
@@ -110,6 +111,16 @@
                 }
             }
 
+            var recalc_base_stats = function(stats) {
+               stats['armor'] += parseFloat($("#chg_str").val());
+               stats['res'] += parseFloat($("#chg_int").val()) * 0.1;
+               var old_off = parseInt($("#char_off_max").val());
+               if (old_off && !is_dual(stats)) { 
+                   stats['aps'] /= 1.15;
+               }
+               set_base_stats(stats);
+            }
+
             var on_equip_change = function() {
                 var new_stats = $.extend({}, stats);
                 Object.keys(new_stats).forEach(function(attr) {
@@ -117,11 +128,27 @@
                     $('#chg_' + attr).val(change);
                     new_stats[attr] += change 
                 }, this);
-                set_base_stats(new_stats);
+                recalc_base_stats(new_stats);
+
                 calc_health('#new_health', new_stats);
                 calc_dmg('#new_dmg', new_stats);
                 calc_reduction('#new_reduction', new_stats);
                 calc_ehp();
+                Object.keys(new_stats).forEach(function(attr) {
+                    $('#up_' + attr).val(new_stats[attr]);
+                }, this);
+            }
+
+            var update_stats = function() {
+                Object.keys(stats).forEach(function(attr) {
+                    stats[attr] = parseFloat($('#char_' + attr).val());
+                }, this);
+                set_base_stats(stats);
+                calc_health("#health", stats);
+                calc_dmg("#dmg", stats);
+                calc_reduction('#reduction', stats);
+                on_equip_change(); 
+                save();
             }
 
             $(document).ready(function() {
@@ -134,13 +161,9 @@
 
                 init_view();
 
-                calc_health("#health", stats);
-                calc_dmg("#dmg", stats);
-                calc_reduction('#reduction', stats);
-                on_equip_change(); 
-                $("#equip").delegate("input", "change", on_equip_change);
-                $("#save").click(on_save);
-                on_save();
+                update_stats();
+                $("#equip").delegate("input", "change", update_stats);
+                $("#update").click(on_update);
             });
         </script>
     </head>
@@ -171,9 +194,6 @@
                 <td id="chg_dmg"></td>
             </tr>
         </table>
-        <button id="save">Save</button>
         <button id="update">Update</button>
-        <button id="reset">Reset</button><br>
-
     </body>
 </html>

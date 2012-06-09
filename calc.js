@@ -39,7 +39,7 @@ var calc_dmg = function(selector, stats) {
     var M = 1;
     var dmg = S*C*A*M;
     if (is_dual(stats)) {
-        dmg += calc_dmg_one_hand("off", stats);
+        dmg += avg_dmg("off", stats);
         dmg = dmg / 2;
         dmg = dmg * 1.15;
     }

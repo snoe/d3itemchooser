@@ -43,6 +43,7 @@ var calc_dmg = function(selector, stats) {
         dmg = dmg / 2;
         dmg = dmg * 1.15;
     }
+    dmg *= stats['aps']
 
     $(selector).html(dmg);
     var chg = $('#new_dmg').html() - $('#dmg').html();
